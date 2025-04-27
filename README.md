@@ -12,7 +12,7 @@ pip install colorama
 python scanner.py
 
 #clone the repository
-git clone https://github.com/.../N0aziXss-Port-Scanner.git
+git clone https://github.com/NazaninNazari/Port_Scanner.git
 cd N0aziXss-Port-Scanner
 
 # install dependencies
