@@ -13,7 +13,7 @@ python scanner.py
 
 #clone the repository
 git clone https://github.com/NazaninNazari/Port_Scanner.git
-cd N0aziXss-Port-Scanner
+cd Port_Scanner-tools
 
 # install dependencies
 pip install -r requirements.txt
