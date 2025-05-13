@@ -19,7 +19,7 @@ SECURITY_PORTS = {
 }
 
 # Banner
-BANNER = Figlet(font='slant').renderText('N0aziXss')
+BANNER = Figlet(font='slant').renderText('Port Scanner')
 console.print(Fore.CYAN + BANNER)
 print(Fore.CYAN + "♦*"*15)
 print(Fore.GREEN + "🍓N0aziXss Port Scanner v3.0🍓")
