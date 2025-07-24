@@ -1,10 +1,14 @@
 import socket
 import sys
+import logging
+from datetime import datetime
 from pyfiglet import Figlet
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Tuple, Optional, Union, List
 from colorama import Fore, Style, init
 from rich.console import Console
+import json
+import os
 
 # Initialize colorama
 init(autoreset=True)
@@ -25,7 +29,16 @@ print(Fore.CYAN + "♦*"*15)
 print(Fore.GREEN + "🍓N0aziXss Port Scanner v3.0🍓")
 print(Fore.CYAN + "♦*"*15 + "\n")
 
+def setup_logging():
+    """Initialize logging system."""
+    logging.basicConfig(
+        filename=f'scan_{datetime.now().strftime("%Y-%m-%d")}.log',
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+
 def ShowPortsTree(open_ports):
+    """Display open ports in a formatted table."""
     print(Fore.CYAN + "\n" + "═"*65)
     print("╔" + " OPEN PORTS FOUND ".center(63, "═") + "╗")
     print("╠" + "═"*63 + "╣")
@@ -40,6 +53,12 @@ def ShowPortsTree(open_ports):
     print("║" + Fore.MAGENTA + f" Total open ports: {len(open_ports)} ".center(63) + Fore.CYAN + "║")
     print("╚" + "═"*63 + "╝" + Style.RESET_ALL + "\n")
 
+def save_to_json(open_ports: list, filename: str = "scan_results.json"):
+    """Save scan results to JSON."""
+    data = [{"port": p[0], "service": p[1], "protocol": p[2], "severity": p[3]} for p in open_ports]
+    with open(filename, 'w') as f:
+        json.dump(data, f, indent=4)
+
 class PortScannerError(Exception):
     pass
 
@@ -53,6 +72,7 @@ class InvalidInputError(PortScannerError):
     pass
 
 def ValidateIP(ip: str) -> bool:
+    """Validate IP address."""
     try:
         socket.inet_aton(ip)
         return True
@@ -60,6 +80,7 @@ def ValidateIP(ip: str) -> bool:
         return False
 
 def ResolveHost(target: str) -> str:
+    """Resolve hostname to IP."""
     if not target:
         raise InvalidInputError("Target cannot be empty")
     
@@ -74,6 +95,7 @@ def ResolveHost(target: str) -> str:
         raise HostResolutionError(f"Resolution error: {str(e)}")
 
 def ParsePortInput(input_str: str) -> Union[int, range]:
+    """Parse port input."""
     if not input_str.strip():
         raise InvalidInputError("Port input cannot be empty")
     
@@ -100,8 +122,9 @@ def ParsePortInput(input_str: str) -> Union[int, range]:
         
     except ValueError:
         raise InvalidInputError("Port must be a valid number")
-    
+
 def ScanPort(ip: str, port: int, proto: str, timeout: float = 1.0) -> Optional[Tuple[int, str, str, str]]:
+    """Scan a single port."""
     try:
         sock_type = socket.SOCK_STREAM if proto == 'tcp' else socket.SOCK_DGRAM
         with socket.socket(socket.AF_INET, sock_type) as sock:
@@ -130,6 +153,7 @@ def ScanPort(ip: str, port: int, proto: str, timeout: float = 1.0) -> Optional[T
     return None
 
 def RunScan(ip: str, ports: Union[int, range, List[int]], proto: str) -> List[Tuple[int, str, str, str]]:
+    """Run the scan with multithreading."""
     if proto not in ('tcp', 'udp'):
         raise InvalidInputError("Invalid protocol")
     
@@ -137,9 +161,11 @@ def RunScan(ip: str, ports: Union[int, range, List[int]], proto: str) -> List[Tu
     open_ports = []
     
     try:
-        with ThreadPoolExecutor(max_workers=min(100, len(port_list))) as executor:
+        max_workers = min(100, len(port_list), os.cpu_count() * 4)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(ScanPort, ip, port, proto): port for port in port_list}
             
+            # First pass - just scan without progress bar
             for future in as_completed(futures):
                 port = futures[future]
                 try:
@@ -156,17 +182,24 @@ def RunScan(ip: str, ports: Union[int, range, List[int]], proto: str) -> List[Tu
         raise PortScanError(f"Scan failed: {str(e)}")
 
 def main():
+    """Main function."""
+    setup_logging()
+    print(Fore.RED + "\n[!] WARNING: Use this tool only on authorized networks. Unauthorized scanning is illegal!" + Style.RESET_ALL)
+    print(Fore.YELLOW + "[i] By using this tool, you agree to use it ethically and legally.\n" + Style.RESET_ALL)
+    
     try:
         target = input(Fore.CYAN + "[?] " + Fore.WHITE + "Enter target IP/hostname: " + Style.RESET_ALL).strip()
         proto = input(Fore.CYAN + "[?] " + Fore.WHITE + "Protocol (tcp/udp): " + Style.RESET_ALL).strip().lower()
         
         ip = ResolveHost(target)
+        logging.info(f"Scan started for target: {target} -> {ip}")
         print(Fore.BLUE + f"\n[i] Target resolved: " + Fore.WHITE + f"{target}" + Fore.YELLOW + " → " + Fore.WHITE + f"{ip}" + Style.RESET_ALL)
         
         # Phase 1: Default security scan
         print(Fore.MAGENTA + "\n[+] Scanning security ports..." + Style.RESET_ALL)
         open_ports = RunScan(ip, SECURITY_PORTS.keys(), proto)
         ShowPortsTree(open_ports)
+        save_to_json(open_ports)
         
         # Phase 2: Custom scan
         while True:
@@ -179,22 +212,27 @@ def main():
                 print(Fore.MAGENTA + "\n[+] Scanning custom ports..." + Style.RESET_ALL)
                 open_ports = RunScan(ip, ports, proto)
                 ShowPortsTree(open_ports)
+                save_to_json(open_ports)
                 
             except InvalidInputError as e:
+                logging.error(str(e))
                 print(Fore.RED + f"[!] Error: {str(e)}" + Style.RESET_ALL, file=sys.stderr)
             except KeyboardInterrupt:
                 print(Fore.YELLOW + "\n[!] Scan interrupted by user" + Style.RESET_ALL)
                 break
             except Exception as e:
+                logging.error(str(e))
                 print(Fore.RED + f"[!] Error: {str(e)}" + Style.RESET_ALL, file=sys.stderr)
                 
     except (HostResolutionError, InvalidInputError) as e:
+        logging.critical(str(e))
         print(Fore.RED + f"\n[!] Fatal error: {str(e)}" + Style.RESET_ALL, file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
         print(Fore.YELLOW + "\n[!] Operation cancelled by user" + Style.RESET_ALL)
         sys.exit(1)
     except Exception as e:
+        logging.critical(str(e))
         print(Fore.RED + f"\n[!] Unexpected error: {str(e)}" + Style.RESET_ALL, file=sys.stderr)
         sys.exit(1)
 
